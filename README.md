@@ -38,7 +38,7 @@ Archive entries preserve the graph, receipt, and verified source bytes. Keep arc
 
 ## Verification
 
-The public Test Vault ran the documented walkthrough on Ubuntu. Separate Ubuntu and Windows jobs independently replayed both versions from the retained archive handoff. [Exact push run, attempt 1](https://github.com/vixttha/Veraphify/actions/runs/44644119066/attempts/1) · [Evidence and rerun instructions](docs/verification.md) · [Test Vault](https://github.com/vixttha/Veraphify/blob/66e822b56528c5f3e7b7730709d4b472ae2d5f1e/test-vault/README.md)
+The public Test Vault ran the documented walkthrough on Ubuntu. Separate Ubuntu and Windows jobs independently replayed both versions from the retained archive handoff. [Exact push run, attempt 1](https://github.com/vixttha/Veraphify/actions/runs/44644119066/attempts/1) · [Evidence and rerun instructions](docs/verification.md) · [Test Vault branch](https://github.com/vixttha/Veraphify/tree/Lydite-Test-Vault/test-vault)
 
 ## License and attribution
 

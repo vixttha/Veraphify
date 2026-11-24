@@ -1,269 +1,18 @@
-name: Veraphify Test Vault
+name: Veraphify public verification
 
 on:
   push:
-    branches: [graphify-hq-test-vault, work/veraphifiy-v0.0.9, integration/veraphify-v0.0.9-mechanical]
-    paths:
-      - 'test-vault/**'
-      - 'veraphifiy.mjs'
-      - 'README.md'
-      - 'docs/adopter-walkthrough.md'
-      - 'docs/verification.md'
-      - 'docs/reuse.md'
-      - 'LICENSE'
-      - 'brand-identity/**'
-      - '.gitattributes'
-      - '.github/workflows/test-vault.yml'
-
+    branches: [main, fix/product-vault-boundary]
   pull_request:
-    branches: [graphify-hq-test-vault, main]
-    paths:
-      - 'test-vault/**'
-      - 'veraphifiy.mjs'
-      - 'README.md'
-      - 'docs/adopter-walkthrough.md'
-      - 'docs/verification.md'
-      - 'docs/reuse.md'
-      - 'LICENSE'
-      - 'brand-identity/**'
-      - '.gitattributes'
-      - '.github/workflows/test-vault.yml'
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  graph-consumers:
-    name: Graph build, consumers, and Bash workflow
+  product:
+    name: Product checkout and brand verification
     if: toJSON(github.event.repository.private) == 'false'
-    runs-on: ubuntu-24.04
-    outputs:
-      artifact-id: ${{ steps.handoff.outputs.artifact-id }}
-      handoff-attempt: ${{ steps.handoff-context.outputs.attempt }}
-    timeout-minutes: 10
-    defaults:
-      run:
-        shell: bash
-    env:
-      GRAPHIFY_HQ_ARCHIVE: ${{ github.workspace }}/_archive/graphify/v0.0.8
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: vixttha/Blender-Agent-Refinement-Toolkit
-          ref: 6af3c2025be3f51e02dca4e4502088c526aae6d1
-          path: _archive
-          persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: '24.22.3'
-          package-manager-cache: false
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-        with:
-          go-version: '1.25.5'
-          cache: false
-      - name: Run the documented adopter walkthrough
-        run: |
-          python - <<'PYCODE'
-          import os
-          import re
-          from pathlib import Path
-
-          guide = Path("docs/adopter-walkthrough.md").read_text(encoding="utf-8")
-          script, = re.findall(r"(?ms)^```bash\n(.*?)^```$", guide)
-          (Path(os.environ["RUNNER_TEMP"]) / "adopter-walkthrough.sh").write_text(script, encoding="utf-8")
-          PYCODE
-          bash "$RUNNER_TEMP/adopter-walkthrough.sh"
-      - name: Verify the Veraphify brand records and approval checks
-        run: |
-          python -B brand-identity/verify.py --ready-for-artwork
-          python -B -m unittest discover -s brand-identity -v
-      - name: Validate the Lydite case catalog
-        run: python -B test-vault/validate_catalog.py
-      - name: Fetch the pinned BART candidate and workflow
-        run: |
-          candidate=d227b202c7cce1b86a1ee06596d709f3dfee1039
-          workflow=2680e03a3d1a7216666554c5baca43b2ec93b944
-          git -C _archive fetch --no-tags --depth=1 origin "$candidate" "$workflow"
-          mkdir -p "$RUNNER_TEMP/bart-candidate" "$RUNNER_TEMP/vault-logs"
-          git -C _archive archive "$candidate" candidate tools | tar -x -C "$RUNNER_TEMP/bart-candidate"
-          git -C _archive show "$workflow:.github/workflows/obj-mtl-evidence.yml" > "$RUNNER_TEMP/obj-mtl-evidence.yml"
-          {
-            printf 'GRAPHIFY_HQ_CANDIDATE=%s\n' "$RUNNER_TEMP/bart-candidate"
-            printf 'GRAPHIFY_HQ_BART_WORKFLOW=%s\n' "$RUNNER_TEMP/obj-mtl-evidence.yml"
-            printf 'GRAPHIFY_HQ_HANDOFF=%s\n' "$RUNNER_TEMP/graph-handoff"
-            printf 'VAULT_LOGS=%s\n' "$RUNNER_TEMP/vault-logs"
-          } >> "$GITHUB_ENV"
-      - name: Check typed citation navigation
-        working-directory: test-vault/typescript
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm test | tee "$VAULT_LOGS/ts.log"
-      - name: Install pinned Graphify dependencies
-        run: |
-          python -m pip install --require-hashes --no-cache-dir --no-deps --only-binary=:all: -r _archive/versions/v0.0.8/requirements.txt
-          python -m pip check
-      - name: Query Graphify over MCP
-        working-directory: test-vault/go
-        run: go test -json -count=1 -mod=readonly ./... | tee "$VAULT_LOGS/go.log"
-      - name: Build a fresh graph and verify the pinned candidate
-        run: python -B -m unittest discover -s test-vault/python -v 2>&1 | tee "$VAULT_LOGS/py.log"
-      - name: Check the fresh export with an independent Node consumer
-        run: node --test --test-reporter=tap test-vault/javascript/evidence.test.mjs | tee "$VAULT_LOGS/js.log"
-      - name: Exercise the pinned Bash workflow steps
-        run: bash test-vault/bash/workflow.tests.sh | tee "$VAULT_LOGS/sh.log"
-      - name: Match the Linux run to the catalog
-        if: ${{ !cancelled() && env.VAULT_LOGS != '' }}
-        run: python -B test-vault/verify_case_run.py linux "$VAULT_LOGS"
-      - name: Verify the shared graph with Lydite v2 receipts
-        run: |
-          receipts="$GRAPHIFY_HQ_HANDOFF/receipts"
-          python -B test-vault/record_handoff.py python-build "$GRAPHIFY_HQ_HANDOFF" "$receipts" --runtime "$(python --version)"
-          python -B test-vault/record_handoff.py node-consume "$GRAPHIFY_HQ_HANDOFF" "$receipts" --runtime "Node $(node --version)"
-          python -B test-vault/evidence_bundle.py "$GRAPHIFY_HQ_HANDOFF"
-          python -B test-vault/verify_receipts.py --require-tracked-case --case test-vault/javascript/case.json \
-            --receipts "$receipts" --evidence "$GRAPHIFY_HQ_HANDOFF/evidence.bin" | tee "$GRAPHIFY_HQ_HANDOFF/verdict.md"
-      - name: Retain the exact plan and evidence context
-        run: |
-          cp test-vault/javascript/case.json "$GRAPHIFY_HQ_HANDOFF/case-plan.json"
-          python -B - <<'PYCODE'
-          import json
-          import os
-          import subprocess
-          from pathlib import Path
-
-          context = {key.lower(): os.environ[key] for key in (
-              "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_EVENT_NAME", "GITHUB_REF",
-              "GITHUB_WORKFLOW_REF", "GITHUB_WORKFLOW_SHA",
-          )}
-          context["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-          (Path(os.environ["GRAPHIFY_HQ_HANDOFF"]) / "evidence-context.json").write_text(
-              json.dumps(context, indent=2) + "\n", encoding="utf-8",
-          )
-          PYCODE
-      - name: Record the public handoff attempt
-        id: handoff-context
-        run: printf 'attempt=%s\n' "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
-      - name: Retain the verified public fixture handoff
-        id: handoff
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: graphify-vault-handoff-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/graph.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/receipt.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/source.txt
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/source-blobs/notes.md
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/source-blobs/src/feature.py
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/source-blobs/test_sample.py
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/python.sha256
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/node.sha256
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/python.observation.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/node.observation.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/receipts/python-build.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/receipts/node-consume.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/evidence.bin
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/verdict.md
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/case-plan.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/evidence-context.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/veraphifiy-archive/*.json
-            ${{ env.GRAPHIFY_HQ_HANDOFF }}/veraphifiy-archive-expectations.json
-          if-no-files-found: error
-          retention-days: 7
-
-  windows-verifier:
-    name: PowerShell receipt verifier on Windows
-    needs: graph-consumers
-    if: ${{ !cancelled() && toJSON(github.event.repository.private) == 'false' }}
-    runs-on: windows-2025
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: '24.22.3'
-          package-manager-cache: false
-      - name: Check native paths, exit codes, and evidence receipts
-        shell: pwsh
-        run: |
-          $log = Join-Path $env:RUNNER_TEMP 'ps.log'
-          ./test-vault/powershell/verify-receipts.tests.ps1 | Tee-Object -LiteralPath $log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Require a Linux handoff from this attempt
-        if: ${{ needs.graph-consumers.result == 'success' }}
-        shell: pwsh
-        env:
-          PRODUCER_ATTEMPT: ${{ needs.graph-consumers.outputs.handoff-attempt }}
-        run: |
-          if ($env:PRODUCER_ATTEMPT -ne $env:GITHUB_RUN_ATTEMPT) {
-            throw "Ubuntu handoff attempt '$env:PRODUCER_ATTEMPT' does not match Windows attempt '$env:GITHUB_RUN_ATTEMPT'. Rerun all jobs to produce a same-attempt handoff."
-          }
-      - name: Download the Linux handoff by artifact ID
-        if: ${{ needs.graph-consumers.result == 'success' }}
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          artifact-ids: ${{ needs.graph-consumers.outputs.artifact-id }}
-          path: ${{ runner.temp }}/linux-handoff
-          digest-mismatch: error
-      - name: Reverify the same bundle on Windows
-        if: ${{ needs.graph-consumers.result == 'success' }}
-        shell: pwsh
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $false
-          $handoff = Join-Path $env:RUNNER_TEMP 'linux-handoff'
-          python -B test-vault/evidence_bundle.py $handoff --check --check-observations
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --input-type=module -e 'import { inspectHandoff } from "./test-vault/javascript/inspect-evidence.mjs"; const result = inspectHandoff(process.argv[1]); console.log(`Verified producer and pinned source blobs: ${result.bundleDigest}`);' $handoff
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $source = Join-Path $handoff 'source.txt'
-          $original = [IO.File]::ReadAllBytes($source)
-          try {
-            $converted = [Text.Encoding]::ASCII.GetString($original).Replace("`n", "`r`n")
-            [IO.File]::WriteAllBytes($source, [Text.Encoding]::ASCII.GetBytes($converted))
-            $rejected = python -B test-vault/evidence_bundle.py $handoff --check 2>&1
-            if ($LASTEXITCODE -ne 2 -or ($rejected -join ' ') -notmatch 'differs from the observed bundle') {
-              throw 'Changed source-pin bytes did not trigger the bundle mismatch'
-            }
-          }
-          finally {
-            [IO.File]::WriteAllBytes($source, $original)
-          }
-          $uploadedPlan = Get-FileHash -LiteralPath (Join-Path $handoff 'case-plan.json') -Algorithm SHA256
-          $trackedPlan = Get-FileHash -LiteralPath 'test-vault/javascript/case.json' -Algorithm SHA256
-          if ($uploadedPlan.Hash -ne $trackedPlan.Hash) {
-            throw 'Uploaded case plan does not match the exact tracked case plan'
-          }
-          python -B test-vault/verify_receipts.py --require-tracked-case --case test-vault/javascript/case.json --receipts (Join-Path $handoff 'receipts') --evidence (Join-Path $handoff 'evidence.bin')
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node test-vault/javascript/verify-archive-replay.mjs $handoff --actions
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $result = 'PASS GHQ-PS-015 reverifies the Ubuntu handoff on Windows'
-          Add-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'ps.log') -Value $result
-          Write-Output $result
-          Add-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'ps.log') -Value 'PowerShell Vault completed successfully'
-      - name: Match the Windows run to the catalog
-        if: ${{ !cancelled() }}
-        shell: pwsh
-        run: |
-          python -B test-vault/verify_case_run.py windows $env:RUNNER_TEMP
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -B -m unittest discover -s test-vault/python -p test_case_run.py -k test_GHQ_PY_108 -v
-          exit $LASTEXITCODE
-
-  archive-replay:
-    name: Independent version archive replay on Ubuntu
-    needs: graph-consumers
-    if: ${{ toJSON(github.event.repository.private) == 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -274,18 +23,25 @@ jobs:
         with:
           node-version: '24.22.3'
           package-manager-cache: false
-      - name: Require evidence from this attempt
-        shell: bash
-        env:
-          PRODUCER_ATTEMPT: ${{ needs.graph-consumers.outputs.handoff-attempt }}
-        run: test "$PRODUCER_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          artifact-ids: ${{ needs.graph-consumers.outputs.artifact-id }}
-          path: ${{ runner.temp }}/linux-handoff
-          digest-mismatch: error
-      - name: Verify both selected archive versions without the builder
+          python-version: '3.12'
+      - name: Verify the product starts with no Vault checkout
         shell: bash
-        env:
-          HANDOFF: ${{ runner.temp }}/linux-handoff
-        run: node test-vault/javascript/verify-archive-replay.mjs "$HANDOFF" --actions
+        run: |
+          if git cat-file -e HEAD:test-vault 2>/dev/null; then
+            echo "The test-vault workspace belongs in Lydite-Test-Vault"
+            exit 1
+          fi
+          node veraphifiy.mjs --help
+      - name: Verify the Veraphify brand records and approval checks
+        run: |
+          python -B brand-identity/verify.py --ready-for-artwork
+          python -B -m unittest discover -s brand-identity -v
+
+  vault:
+    name: Branch-owned Vault
+    uses: vixttha/Veraphify/.github/workflows/test-vault.yml@9cd93f72ab18655758585ccbb047e69fbfec1d13
+    with:
+      product_sha: ${{ github.sha }}
+      vault_sha: 9cd93f72ab18655758585ccbb047e69fbfec1d13

@@ -1,6 +1,0 @@
-{
-  "schema_version": 2,
-  "case_id": "GHQ-JS-001",
-  "required_checks": ["python-build", "node-consume"],
-  "shared_evidence": true
-}

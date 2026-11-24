@@ -7,7 +7,7 @@ and permission notices when redistributing copies or substantial portions.
 | Material | Applicable notice |
 | --- | --- |
 | Veraphify-authored code and tests | [Root MIT license](../LICENSE). The CLI and Test Vault include first-party work. |
-| Imported Lydite Test Vault material | [Lydite MIT notice](../test-vault/LICENSE). The [installed-files inventory](../test-vault/README.md#installed-files) identifies the verbatim and adapted files. Preserve the Lydite notice for those files. |
+| Imported Lydite Test Vault material | [Lydite MIT notice](../lib/LYDITE-LICENSE). The product evidence inspector and profile were extracted from the former in-tree Vault. The [Vault branch inventory](https://github.com/vixttha/Veraphify/blob/Lydite-Test-Vault/test-vault/README.md#installed-files) identifies the verbatim and adapted files. Preserve the applicable Lydite notice. |
 | Imported Brand Identity kit material | [Brand Identity kit MIT notice](../brand-identity/LICENSE). Preserve that notice when redistributing imported kit material. |
 | Graphify and external dependencies | Use the terms supplied with each upstream project or dependency. The [adopter walkthrough](adopter-walkthrough.md) identifies the pinned producer. |
 
